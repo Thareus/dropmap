@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel File Reader</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 100vw;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            overflow: auto;
+        }
+        .drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background-color: #f9f9f9;
+            transition: all 0.3s;
+        }
+        .drop-area.active {
+            border-color: #0066cc;
+            background-color: #e6f2ff;
+        }
+        .drop-area h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .drop-area p {
+            color: #666;
+        }
+        .file-info {
+            float: left;
+            margin-top: 20px;
+        }
+        .file-info, #preview-container, #map-container {
+            width: 100%;
+            max-width: 100%;
+        }
+        table {
+            width: 90%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .btn {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background-color: #0052a3;
+        }
+        .btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #geocoding-status {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+        #map {
+            height: 95vw;
+            width: 95vw;
+            margin-top: 20px;
+            border: 1px solid #000000;
+            border-radius: 4px;
+        }
+        .popup-content {
+            max-width: 300px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .popup-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .popup-table th, .popup-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .popup-table th {
+            background-color: #f2f2f2;
+        }
+        #filters-container {
+            width: 100%;
+        }
+        #column-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: flex-start;
+            background-color: #ececec;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        #column-filters > .filter-section {
+            border: 3px solid #d5d5d5;
+            padding: 5px;
+        }
+
+    </style>
+</head>
+<body>
+    <h1>Excel File Reader</h1>
+    <p>Drag and drop your Excel file (XLSX) or CSV file here to read it into an array.</p>
+    <div id="drop-area" class="drop-area">
+        <h2>Drop File Here</h2>
+        <p>or</p>
+        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" class="hidden">
+        <button id="browse-btn" class="btn">Browse Files</button>
+    </div>
+    <div id="file-info" class="file-info hidden">
+        <h3>File Information:</h3>
+        <p id="file-name"></p>
+        <p id="file-type"></p>
+        <p id="sheet-count"></p>
+        <p id="row-count"></p>
+    </div>
+    <div id="preview-container" class="hidden">
+        <h3>Data Preview:</h3>
+        <div id="sheet-selector"></div>
+        <div id="table-container"></div>
+        <button id="geocode-btn" class="btn">Geocode Missing Postcodes</button>
+        <div id="geocoding-status"></div>
+    </div>
+    <div id="map-container" class="hidden">
+        <button id="map-btn" class="btn">Create Map</button>
+        <div id="map" class="hidden"></div>
+        <div id="filters-container" class="hidden">
+            <h3>Map Filters and Overlays</h3>
+            <div id="column-filters"></div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Elements
+            const dropArea = document.getElementById('drop-area');
+            const fileInput = document.getElementById('file-input');
+            const browseBtn = document.getElementById('browse-btn');
+            const fileInfo = document.getElementById('file-info');
+            const fileName = document.getElementById('file-name');
+            const fileType = document.getElementById('file-type');
+            const sheetCount = document.getElementById('sheet-count');
+            const rowCount = document.getElementById('row-count');
+            const previewContainer = document.getElementById('preview-container');
+            const mapContainer = document.getElementById('map-container');
+            const sheetSelector = document.getElementById('sheet-selector');
+            const tableContainer = document.getElementById('table-container');
+            const geocodeBtn = document.getElementById('geocode-btn');
+            const mapBtn = document.getElementById('map-btn');
+
+            // Global variables for map and data
+            let fileData = null;
+            let map = null;
+            let mapMarkers = [];
+            let originalMarkers = [];
+
+            // Define possible column names for postcode, latitude, and longitude
+            const postcodeColumns = ['postcode', 'post code', 'postal code', 'zip', 'zipcode'];
+            const latColumns = ['latitude', 'lat', 'lattitude'];
+            const longColumns = ['longitude', 'long', 'lng', 'lon'];
+
+            // Event listeners for drag and drop
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.classList.add('active');
+                }, false);
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.classList.remove('active');
+                }, false);
+            });
+            dropArea.addEventListener('drop', handleDrop, false);
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+
+                if (files.length) {
+                    handleFiles(files);
+                }
+            }
+            // Browse button functionality
+            browseBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+            function handleFiles(files) {
+                const file = files[0];
+
+                fileName.textContent = `File Name: ${file.name}`;
+                fileType.textContent = `File Type: ${file.type || 'Unknown (likely .xlsx)'}`;
+
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+
+                    // Check if it's a CSV file or Excel file
+                    if (file.name.toLowerCase().endsWith('.csv')) {
+                        // Parse CSV with PapaParse
+                        Papa.parse(file, {
+                            header: true,
+                            dynamicTyping: true,
+                            complete: function(results) {
+                                // Handle CSV data
+                                fileData = {
+                                    type: 'csv',
+                                    data: results.data
+                                };
+
+                                sheetCount.textContent = 'Sheets: 1 (CSV)';
+                                rowCount.textContent = `Rows: ${results.data.length}`;
+
+                                displayCSVData(results.data);
+                                fileInfo.classList.remove('hidden');
+                                previewContainer.classList.remove('hidden');
+                                mapContainer.classList.remove('hidden');
+                            }
+                        });
+                    } else {
+                        // Parse Excel file with SheetJS
+                        try {
+                            const workbook = XLSX.read(data, {
+                                type: 'array',
+                                cellDates: true,
+                                cellStyles: true
+                            });
+
+                            fileData = {
+                                type: 'excel',
+                                workbook: workbook,
+                                sheets: {}
+                            };
+                            // Process each sheet
+                            const sheetNames = workbook.SheetNames;
+                            sheetCount.textContent = `Sheets: ${sheetNames.length}`;
+                            let totalRows = 0;
+                            sheetNames.forEach(sheetName => {
+                                const worksheet = workbook.Sheets[sheetName];
+                                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+                                // Skip empty rows
+                                const filteredData = jsonData.filter(row => row.some(cell => cell !== null));
+                                fileData.sheets[sheetName] = filteredData;
+                                totalRows += filteredData.length;
+                            });
+                            rowCount.textContent = `Total Rows: ${totalRows}`;
+                            // Display sheet selector and first sheet data
+                            displayExcelSheetSelector(sheetNames);
+                            displayExcelData(sheetNames[0]);
+                            fileInfo.classList.remove('hidden');
+                            previewContainer.classList.remove('hidden');
+                            mapContainer.classList.remove('hidden');
+                        } catch (error) {
+                            console.error('Error parsing Excel file:', error);
+                            alert('Error parsing Excel file. Please check the file format.');
+                        }
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+            function handleFileSelect(e) {
+                const files = e.target.files;
+                if (files.length) {
+                    handleFiles(files);
+                }
+            }
+
+            fileInput.addEventListener('change', handleFileSelect, false);
+            function displayCSVData(data) {
+                // Clear sheet selector
+                sheetSelector.innerHTML = '<strong>CSV File</strong>';
+
+                // Build table for preview
+                const headers = Object.keys(data[0] || {});
+                const table = document.createElement('table');
+
+                // Create header row
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+
+                headers.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+
+                // Create data rows (limited to 10 for preview)
+                const tbody = document.createElement('tbody');
+                const previewData = data.slice(0, 10);
+
+                previewData.forEach(row => {
+                    const tr = document.createElement('tr');
+
+                    headers.forEach(header => {
+                        const td = document.createElement('td');
+                        td.textContent = row[header] !== null ? row[header] : '';
+                        tr.appendChild(td);
+                    });
+
+                    tbody.appendChild(tr);
+                });
+
+                table.appendChild(tbody);
+
+                // Clear and append table
+                tableContainer.innerHTML = '';
+                tableContainer.appendChild(table);
+            }
+
+            function displayExcelSheetSelector(sheetNames) {
+                sheetSelector.innerHTML = '<strong>Select Sheet: </strong>';
+
+                const select = document.createElement('select');
+                select.id = 'sheet-select';
+
+                sheetNames.forEach(sheetName => {
+                    const option = document.createElement('option');
+                    option.value = sheetName;
+                    option.textContent = sheetName;
+                    select.appendChild(option);
+                });
+
+                select.addEventListener('change', (e) => {
+                    displayExcelData(e.target.value);
+                });
+
+                sheetSelector.appendChild(select);
+            }
+
+            function displayExcelData(sheetName) {
+                const data = fileData.sheets[sheetName];
+
+                // Build table for preview
+                const table = document.createElement('table');
+
+                // Create header row if exists
+                if (data.length > 0) {
+                    const thead = document.createElement('thead');
+                    const headerRow = document.createElement('tr');
+
+                    data[0].forEach((header, index) => {
+                        const th = document.createElement('th');
+                        th.textContent = header !== null ? header : `Column ${index + 1}`;
+                        headerRow.appendChild(th);
+                    });
+
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
+
+                    // Create data rows (skip header, limited to 10 for preview)
+                    const tbody = document.createElement('tbody');
+                    const previewData = data.slice(1, 11);
+
+                    previewData.forEach(row => {
+                        const tr = document.createElement('tr');
+
+                        row.forEach(cell => {
+                            const td = document.createElement('td');
+                            td.textContent = cell !== null ? cell : '';
+                            tr.appendChild(td);
+                        });
+
+                        tbody.appendChild(tr);
+                    });
+
+                    table.appendChild(tbody);
+                }
+                // Clear and append table
+                tableContainer.innerHTML = '';
+                tableContainer.appendChild(table);
+
+                // Convert data to JSON format with headers as keys for array output
+                let jsonArray = [];
+
+                if (data.length > 1) {
+                    const headers = data[0];
+                    const rows = data.slice(1);
+
+                    jsonArray = rows.map(row => {
+                        const obj = {};
+                        headers.forEach((header, index) => {
+                            if (header !== null) {
+                                obj[header] = row[index];
+                            } else {
+                                obj[`Column ${index + 1}`] = row[index];
+                            }                });
+                        return obj;
+                    });
+                }
+            }
+
+            function findLocationColumns(data) {
+                let postcodeColumnIndex = -1;
+                let latColumnIndex = -1;
+                let longColumnIndex = -1;
+
+                // Find column indices
+                if (data[0]) {
+                    data[0].forEach((header, index) => {
+                        const lowerHeader = header.toString().toLowerCase().trim();
+                        if (postcodeColumns.includes(lowerHeader)) {
+                            postcodeColumnIndex = index;
+                        }
+                        if (latColumns.includes(lowerHeader)) {
+                            latColumnIndex = index;
+                        }
+                        if (longColumns.includes(lowerHeader)) {
+                            longColumnIndex = index;
+                        }            });
+                }
+                return {
+                    postcodeColumnIndex,
+                    latColumnIndex,
+                    longColumnIndex
+                };
+            }
+
+            // Geocoding function for UK postcodes
+            async function geocodePostcodes(data, postcodeColumnIndex, latColumnIndex, longColumnIndex) {
+                const geocodingStatus = document.getElementById('geocoding-status');
+                const geocodeBtn = document.getElementById('geocode-btn');
+
+                // Disable button during geocoding
+                geocodeBtn.disabled = true;
+                geocodingStatus.innerHTML = 'Starting geocoding process...';
+
+                // Prepare rows that need geocoding
+                const rowsToGeocode = data.slice(1).filter((row, index) => {
+                    const postcode = row[postcodeColumnIndex];
+                    const lat = row[latColumnIndex];
+                    const long = row[longColumnIndex];
+
+                    // Check if postcode exists and lat/long are missing
+                    return postcode && (!lat || !long);
+                });
+
+                // Limit to first 100 rows to prevent rate limiting
+                const limitedRows = rowsToGeocode.slice(0, 100);
+
+                geocodingStatus.innerHTML = `Geocoding ${limitedRows.length} rows...`;
+
+                try {
+                    // Use Promise.all for concurrent requests with a small delay between batches
+                    const geocodedResults = await Promise.all(
+                        limitedRows.map(async (row, index) => {
+                            // Slight delay to avoid rate limiting
+                            await new Promise(resolve => setTimeout(resolve, index * 200));
+                            const postcode = row[postcodeColumnIndex].toString().replace(/\s/g, '').toUpperCase();
+                            try {
+                                const response = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
+                                const result = await response.json();
+
+                                if (result.status === 200) {
+                                    return {
+                                        row,
+                                        lat: result.result.latitude,
+                                        long: result.result.longitude
+                                    };
+                                }                    } catch (error) {
+                                console.warn(`Geocoding failed for postcode ${postcode}:`, error);
+                            }
+                            return null;
+                        })
+                    );
+
+                    // Filter out null results
+                    const validResults = geocodedResults.filter(r => r !== null);
+
+                    // Update original data with geocoded results
+                    validResults.forEach(result => {
+                        const rowIndex = data.indexOf(result.row);
+                        if (rowIndex !== -1) {
+                            // Update or add latitude and longitude columns
+                            if (latColumnIndex === -1) {
+                                // Add new columns if they don't exist
+                                data[0].push('Latitude');
+                                latColumnIndex = data[0].length - 1;
+                            }
+                            if (longColumnIndex === -1) {
+                                data[0].push('Longitude');
+                                longColumnIndex = data[0].length - 1;
+                            }
+                            data[rowIndex][latColumnIndex] = result.lat;
+                            data[rowIndex][longColumnIndex] = result.long;
+                        }            });
+                    // Update UI
+                    geocodingStatus.innerHTML = `Geocoded ${validResults.length} postcodes successfully!`;
+                    displayExcelData(getCurrentSheetName());
+                } catch (error) {
+                    console.error('Geocoding error:', error);
+                    geocodingStatus.innerHTML = `Geocoding failed: ${error.message}`;
+                } finally {
+                    // Re-enable button
+                    geocodeBtn.disabled = false;
+                }
+                return data;
+            }
+
+            // Function to get current sheet name
+            function getCurrentSheetName() {
+                const sheetSelect = document.getElementById('sheet-select');
+                return sheetSelect ? sheetSelect.value : '';
+            }
+
+            // Add event listener to geocode button
+            geocodeBtn.addEventListener('click', async () => {
+                // Get current sheet data
+                const sheetName = getCurrentSheetName();
+                let currentData = fileData.type === 'csv' ? fileData.data : fileData.sheets[sheetName];
+                // Check for postcode and lat/long columns
+                const {
+                    postcodeColumnIndex,
+                    latColumnIndex,
+                    longColumnIndex
+                } = findLocationColumns(currentData);
+                // Validate column indices
+                if (postcodeColumnIndex === -1) {
+                    alert('No postcode column found. Please check your data.');
+                    return;
+                }
+                // Run geocoding
+                if (fileData.type === 'csv') {
+                    fileData.data = await geocodePostcodes(
+                        currentData.map(row => Object.values(row)),
+                        postcodeColumnIndex,
+                        latColumnIndex,
+                        longColumnIndex
+                    );
+                } else {
+                    fileData.sheets[sheetName] = await geocodePostcodes(
+                        currentData,
+                        postcodeColumnIndex,
+                        latColumnIndex,
+                        longColumnIndex
+                    );
+                }
+            });
+
+            function detectColumnType(column, options = {}) {
+                const {
+                    nullThreshold = 0.5,
+                    categoricalUniquenessThreshold = 0.4,
+                    numericUniquenessThreshold = 0.9,
+                    uniquenessThreshold = 0.8
+                } = options;
+                // Remove header
+                const data = column.slice(1);
+                // Calculate null percentage
+                const nullCount = data.filter(val =>
+                    val === null ||
+                    val === undefined ||
+                    val === ''
+                ).length;
+                const nullPercentage = nullCount / data.length;
+                // If too many null values, return null-column type
+                if (nullPercentage > nullThreshold) {
+                    return 'null-column';
+                }
+                // Filter out null, undefined, and empty string values
+                const filteredData = data.filter(val =>
+                    val !== null &&
+                    val !== undefined &&
+                    val !== ''
+                );
+
+                // Check if all values are boolean-like
+                const booleanCheck = filteredData.every(val =>
+                    val.toString().toLowerCase() === 'true' ||
+                    val.toString().toLowerCase() === 'false' ||
+                    val === 0 ||
+                    val === 1
+                );
+                if (booleanCheck) return 'boolean';
+
+                // Check if all values are numeric
+                const numericCheck = filteredData.every(val => !isNaN(parseFloat(val)));
+
+                // Check unique values percentage
+                const totalRows = data.length;
+                const validRows = filteredData.length;
+                const uniqueValues = new Set(filteredData.map(val => val?.toString().trim()));
+                const uniquenessRatio = uniqueValues.size / totalRows;
+                const identifierKeywords = ['id', 'uuid', 'key', 'code', 'reference'];
+                const isLikelyIdentifierColumn = (name) => identifierKeywords.some(keyword => name.toLowerCase().includes(keyword));
+                console.log(column[0], uniquenessRatio)
+                // Check if column appears to be an identifier or reference column
+                if (isLikelyIdentifierColumn(column[0])) {
+                    return 'text-unique';
+                }
+                // If values are text and most are unique consider it a text or identifer column
+                else if (!numericCheck && uniquenessRatio >= uniquenessThreshold) {
+                    return 'text-unique';
+                }
+                // If more than threshold percentage of numerical values are unique, consider it a non-categorical numerical column
+                else if (!numericCheck && ((uniqueValues.size > 0 && uniqueValues.size <= 20) || (uniquenessRatio <= categoricalUniquenessThreshold))) {
+                    return 'categorical';
+                }
+                else if (numericCheck) {
+                    return 'numeric'
+                }
+
+                // Check if all values are dates
+                const dateCheck = filteredData.every(val => {
+                    const date = new Date(val);
+                    return !isNaN(date.getTime());
+                });
+                if (dateCheck) return 'date';
+
+                // Default to text
+                return 'text';
+            }
+
+            // Function to generate color based on numeric value
+            function getColorForValue(value, min, max) {
+                // Normalize value between 0 and 1
+                const normalized = (value - min) / (max - min);
+                
+                // Create a gradient from blue (low) to white (mid) to red (high)
+                const r = normalized > 0.5 ? 255 * (normalized - 0.5) * 2 : 0;
+                const b = normalized < 0.5 ? 255 * (0.5 - normalized) * 2 : 0;
+                const g = 255 * (1 - Math.abs(normalized - 0.5) * 2);
+                
+                return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+            }
+
+            // Function to create filter controls
+            function createFilterControls(data) {
+                const filterContainer = document.getElementById('filters-container');
+                const filterControlsSection = document.getElementById('column-filters');
+
+                // Clear existing controls
+                filterControlsSection.innerHTML = '';
+                filterContainer.classList.remove('hidden');
+
+                // Find latitude and longitude column indices
+                const { latColumnIndex, longColumnIndex } = findLocationColumns(data);
+
+                // Analyze columns
+                const columnTypes = data[0].map((header, index) => ({
+                    header,
+                    type: detectColumnType(data.map(row => row[index])),
+                    index
+                }));
+                console.log(columnTypes)
+
+                // Filter out lat/long and non-useful columns
+                const filterableColumns = columnTypes.filter(col =>
+                    col.index !== latColumnIndex &&
+                    col.index !== longColumnIndex &&
+                    ['numeric', 'categorical', 'boolean'].includes(col.type)
+                );
+                console.log(filterableColumns)
+
+                // Create controls for each filterable column
+                filterableColumns.forEach(column => {
+                    const filterSection = document.createElement('div');
+                    filterSection.className = 'filter-section';
+
+                    const title = document.createElement('h4');
+                    title.textContent = column.header;
+                    filterSection.appendChild(title);
+
+                    // Different controls based on column type
+                    if (column.type === 'numeric') {
+                        // Numeric range slider
+                        const sliderContainer = document.createElement('div');
+                        sliderContainer.className = 'column-filter';
+
+                        // Get min and max values
+                        const columnValues = data.slice(1).map(row => parseFloat(row[column.index]));
+                        const min = Math.min(...columnValues);
+                        const max = Math.max(...columnValues);
+
+                        // Create range slider
+                        const slider = document.createElement('input');
+                        slider.type = 'range';
+                        slider.min = min;
+                        slider.max = max;
+                        slider.value = max;
+                        slider.step = (max - min) / 100;
+
+                        const minDisplay = document.createElement('span');
+                        minDisplay.textContent = `${min.toFixed(2)}`;
+                        const maxDisplay = document.createElement('span');
+                        maxDisplay.textContent = `${max.toFixed(2)}`;
+
+                        // Color scale visualization
+                        const colorScale = document.createElement('div');
+                        colorScale.className = 'color-scale';
+
+                        const colorBar = document.createElement('div');
+                        colorBar.className = 'color-scale-bar';
+
+                        colorScale.appendChild(colorBar);
+
+                        // Slider event listener
+                        slider.addEventListener('input', () => {
+                            const filterValue = parseFloat(slider.value);
+                            maxDisplay.textContent = `${filterValue.toFixed(2)}`;
+
+                            // Filter markers
+                            mapMarkers.forEach((marker, index) => {
+                                const value = parseFloat(originalMarkers[index].data[column.index]);
+
+                                if (value <= filterValue) {
+                                    marker.addTo(map);
+                                    // Color marker based on value
+                                    marker.setIcon(L.divIcon({
+                                        className: 'custom-marker',
+                                        html: `<div style="background-color: ${getColorForValue(value, min, max)};
+                                                width: 20px;
+                                                height: 20px;
+                                                border-radius: 50%;
+                                                border: 2px solid white;
+                                                box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`
+                                    }));
+                                } else {
+                                    map.removeLayer(marker);
+                                }
+                            });
+                        });
+
+                        sliderContainer.appendChild(minDisplay);
+                        sliderContainer.appendChild(slider);
+                        sliderContainer.appendChild(maxDisplay);
+
+                        filterSection.appendChild(sliderContainer);
+                        filterSection.appendChild(colorScale);
+                    } else if (column.type === 'categorical') {
+                        // Categorical filter with checkboxes
+                        const uniqueValues = [...new Set(
+                            data.slice(1).map(row => row[column.index]?.toString().trim())
+                        )];
+
+                        uniqueValues.forEach(value => {
+                            const checkboxContainer = document.createElement('div');
+
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.id = `filter-${column.header}-${value}`;
+                            checkbox.value = value;
+                            checkbox.checked = true;
+
+                            const label = document.createElement('label');
+                            label.htmlFor = checkbox.id;
+                            label.textContent = value;
+
+                            checkboxContainer.appendChild(checkbox);
+                            checkboxContainer.appendChild(label);
+
+                            // Checkbox event listener
+                            checkbox.addEventListener('change', () => {
+                                mapMarkers.forEach((marker, index) => {
+                                    const markerValue = originalMarkers[index].data[column.index]?.toString().trim();
+
+                                    if (markerValue === value) {
+                                        if (checkbox.checked) {
+                                            marker.addTo(map);
+                                        } else {
+                                            map.removeLayer(marker);
+                                        }
+                                    }
+                                });
+                            });
+
+                            filterSection.appendChild(checkboxContainer);
+                        });
+                    } else if (column.type === 'boolean') {
+                        // Boolean filter with radio buttons
+                        const trueOption = document.createElement('input');
+                        trueOption.type = 'radio';
+                        trueOption.name = `boolean-filter-${column.header}`;
+                        trueOption.id = `filter-${column.header}-true`;
+                        trueOption.value = 'true';
+
+                        const trueLabel = document.createElement('label');
+                        trueLabel.htmlFor = trueOption.id;
+                        trueLabel.textContent = 'True';
+
+                        const falseOption = document.createElement('input');
+                        falseOption.type = 'radio';
+                        falseOption.name = `boolean-filter-${column.header}`;
+                        falseOption.id = `filter-${column.header}-false`;
+                        falseOption.value = 'false';
+
+                        const falseLabel = document.createElement('label');
+                        falseLabel.htmlFor = falseOption.id;
+                        falseLabel.textContent = 'False';
+
+                        const allOption = document.createElement('input');
+                        allOption.type = 'radio';
+                        allOption.name = `boolean-filter-${column.header}`;
+                        allOption.id = `filter-${column.header}-all`;
+                        allOption.value = 'all';
+                        allOption.checked = true;
+
+                        const allLabel = document.createElement('label');
+                        allLabel.htmlFor = allOption.id;
+                        allLabel.textContent = 'All';
+
+                        // Event listener for boolean filter
+                        [trueOption, falseOption, allOption].forEach(option => {
+                            option.addEventListener('change', () => {
+                                mapMarkers.forEach((marker, index) => {
+                                    const boolValue = originalMarkers[index].data[column.index];
+                                    const normalizedValue =
+                                        boolValue === true ||
+                                        boolValue === 1 ||
+                                        boolValue?.toString().toLowerCase() === 'true';
+
+                                    if (option.value === 'all') {
+                                        marker.addTo(map);
+                                    } else {
+                                        const filterValue = option.value === 'true';
+                                        if (normalizedValue === filterValue) {
+                                            marker.addTo(map);
+                                        } else {
+                                            map.removeLayer(marker);
+                                        }
+                                    }
+                                });
+                            });
+                        });
+
+                        filterSection.appendChild(allOption);
+                        filterSection.appendChild(allLabel);
+                        filterSection.appendChild(trueOption);
+                        filterSection.appendChild(trueLabel);
+                        filterSection.appendChild(falseOption);
+                        filterSection.appendChild(falseLabel);
+                    }
+
+                    filterControlsSection.appendChild(filterSection);
+                });
+            }
+
+            function createLeafletMap(data) {
+                const mapContainer = document.getElementById('map');
+                const mapBtn = document.getElementById('map-btn');
+
+                // Clear existing map and markers
+                if (map) {
+                    map.remove();
+                    mapMarkers = [];
+                    originalMarkers = [];
+                }
+
+                // Show map container
+                mapContainer.classList.remove('hidden');
+                mapBtn.disabled = true;
+
+                // Create new map
+                map = L.map('map').setView([54.5, -4], 6);  // Centered on UK
+
+                // Add base tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+
+                // Find latitude and longitude column indices
+                const { latColumnIndex, longColumnIndex } = findLocationColumns(data);
+
+                // Validate lat/long columns
+                if (latColumnIndex === -1 || longColumnIndex === -1) {
+                    alert('Latitude or Longitude columns not found');
+                    mapBtn.disabled = false;
+                    return;
+                }
+
+                // Create markers for each row with valid coordinates
+                const markers = data.slice(1).filter(row => {
+                    const lat = parseFloat(row[latColumnIndex]);
+                    const long = parseFloat(row[longColumnIndex]);
+                    return !isNaN(lat) && !isNaN(long);
+                });
+
+                // Track map bounds
+                const bounds = [];
+
+                // Create popup content function
+                function createPopupContent(row) {
+                    const popupDiv = document.createElement('div');
+                    popupDiv.className = 'popup-content';
+
+                    const table = document.createElement('table');
+                    table.className = 'popup-table';
+
+                    // Use headers from the first row
+                    const headers = data[0];
+
+                    headers.forEach((header, index) => {
+                        // Skip if header is null or undefined
+                        if (!header) return;
+
+                        const tr = document.createElement('tr');
+
+                        const th = document.createElement('th');
+                        th.textContent = header;
+
+                        const td = document.createElement('td');
+                        td.textContent = row[index] !== null && row[index] !== undefined
+                            ? row[index].toString()
+                            : 'N/A';
+
+                        tr.appendChild(th);
+                        tr.appendChild(td);
+                        table.appendChild(tr);
+                    });
+
+                    popupDiv.appendChild(table);
+                    return popupDiv;
+                }
+
+                // Add markers
+                markers.forEach(row => {
+                    const lat = parseFloat(row[latColumnIndex]);
+                    const long = parseFloat(row[longColumnIndex]);
+
+                    const marker = L.marker([lat, long]).addTo(map);
+
+                    // Create popup with all row data
+                    const popupContent = createPopupContent(row);
+                    marker.bindPopup(popupContent);
+
+                    // Add to markers array and bounds
+                    mapMarkers.push(marker);
+                    originalMarkers.push({ marker, data: row });
+                    bounds.push([lat, long]);
+                });
+
+                // Fit map to markers if any exist
+                if (bounds.length > 0) {
+                    map.fitBounds(bounds, {
+                        padding: [50, 50],  // Add some padding
+                        maxZoom: 12  // Limit max zoom level
+                    });
+                }
+
+                // Create filter controls
+                createFilterControls(data);
+
+                // Re-enable map button
+                mapBtn.disabled = false;
+            }
+
+            // Add event listener to map button
+            mapBtn.addEventListener('click', () => {
+                // Get current sheet data
+                const sheetName = getCurrentSheetName();
+                const currentData = fileData.type === 'csv'
+                    ? [Object.keys(fileData.data[0]), ...fileData.data.map(row => Object.values(row))]
+                    : fileData.sheets[sheetName];
+
+                // Create map
+                createLeafletMap(currentData);
+            });
+        });
+    </script>
+</body>
+</html>
