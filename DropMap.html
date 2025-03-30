@@ -446,6 +446,9 @@
                 </div>
             </div>
         </section>
+        <section id="logs-section" class="hidden">
+            <button id="log-btn" class="btn" disabled>Download Log</button>
+        </section>
     </main>
 
     <script>
@@ -476,6 +479,9 @@
             const mapDiv = document.getElementById('map');
             const mapLegend = document.getElementById('map-legend');
             const legendItems = document.getElementById('legend-items');
+            // Loging Elements
+            const logSection = document.getElementById('logs-section')
+            const logBtn = document.getElementById('log-btn')
 
             // --- State Variables ---
             let fileData = null; // { type: 'csv'/'excel', data/sheets: {...} }
@@ -683,6 +689,8 @@
                     map.remove();
                     map = null;
                  }
+                 // Reveal logs section
+                 logSection.classList.remove('hidden');
             }
 
              function analyzeColumns() {
@@ -841,7 +849,6 @@
                     // Needs geocoding if postcode exists and lat or long is missing/invalid
                     return postcode && (!lat || !long || isNaN(parseFloat(lat)) || isNaN(parseFloat(long)));
                 });
-
                 if (rowsToGeocode.length === 0) {
                     geocodingStatusEl.textContent = 'No rows require geocoding (Postcode present and Lat/Long already exist).';
                     console.log(geocodingStatusEl.textContent)
@@ -894,7 +901,6 @@
                             console.error('Bulk geocoding API error:', results.error);
                             failedCount += postcodesToLookup.length; // Assume all in batch failed on API error
                         }
-
                     } catch (error) {
                         console.error('Network error during geocoding:', error);
                         failedCount += postcodesToLookup.length; // Assume all in batch failed on network error
@@ -913,7 +919,6 @@
 
                 geocodingStatusEl.textContent = `Geocoding complete. Successful: ${geocodedCount}, Failed/Not Found: ${failedCount}.`;
                 console.log(geocodingStatusEl.textContent)
-                geocodingStatusEl.classList.add = 'success';
 
                 setTimeout(() => {
                     // Refresh analysis, preview, and button states
@@ -1514,6 +1519,23 @@
 
                 return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
             }
+            // Logging
+            const originalLog = console.log.bind(console);
+            let logs = [];
+            console.log = function(...args) {
+              logs.push(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' '));
+              originalLog(...args);
+              if (logs.length > 0) logBtn.disabled = false;
+            };
+            logBtn.addEventListener('click', () => {
+              const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'console-log.txt';
+              a.click();
+              URL.revokeObjectURL(url);
+            });
         });
     </script>
 </body>
