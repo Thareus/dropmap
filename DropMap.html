@@ -503,8 +503,8 @@
             const POSTCODE_COLUMNS = ['postcode', 'post code', 'postal code', 'zip', 'zipcode'];
             const LAT_COLUMNS = ['latitude', 'lat', 'lattitude', 'y'];
             const LONG_COLUMNS = ['longitude', 'long', 'lng', 'lon', 'x'];
-            const GEOCODE_API = 'https://api.postcodes.io/postcodes/';
-            const GEOCODE_BATCH_LIMIT = 90; // postcodes.io allows 100 per request, keep slightly lower
+            const GEOCODE_API = 'http://api.postcodes.io/postcodes/';
+            const GEOCODE_BATCH_LIMIT = 90; // postcodes.io allows 100 per request
             const GEOCODE_DELAY = 100; // ms delay between batches
 
             // --- Initialization ---
@@ -696,38 +696,38 @@
                  logSection.classList.remove('hidden');
             }
 
-             function analyzeColumns() {
-                 columnInfo = {}; // Reset column info
+            function analyzeColumns() {
+                columnInfo = {}; // Reset column info
 
-                 if (!currentHeaders || currentHeaders.length === 0) return;
+                if (!currentHeaders || currentHeaders.length === 0) return;
 
-                 currentHeaders.forEach((header, index) => {
-                     const headerStr = header ? header.toString().toLowerCase().trim() : undefined;
+                currentHeaders.forEach((header, index) => {
+                 const headerStr = header ? header.toString().toLowerCase().trim() : undefined;
 
-                     // Check for Location Columns
-                     if (locationColumns.postcode === -1 && POSTCODE_COLUMNS.includes(headerStr)) {
-                         locationColumns.postcode = index;
-                     }
-                     if (locationColumns.lat === -1 && LAT_COLUMNS.includes(headerStr)) {
-                         locationColumns.lat = index;
-                     }
-                     if (locationColumns.long === -1 && LONG_COLUMNS.includes(headerStr)) {
-                         locationColumns.long = index;
-                     }
+                 // Check for Location Columns
+                 if (locationColumns.postcode === -1 && POSTCODE_COLUMNS.includes(headerStr)) {
+                     locationColumns.postcode = index;
+                 }
+                 if (locationColumns.lat === -1 && LAT_COLUMNS.includes(headerStr)) {
+                     locationColumns.lat = index;
+                 }
+                 if (locationColumns.long === -1 && LONG_COLUMNS.includes(headerStr)) {
+                     locationColumns.long = index;
+                 }
 
-                     // Get column data
-                     const columnData = currentSheetData.slice(1).map(row => row[index]);
-                     colType = detectColumnType(header, columnData);
+                 // Get column data
+                 const columnData = currentSheetData.slice(1).map(row => row[index]);
+                 colType = detectColumnType(header, columnData);
 
-                     columnInfo[index] = { header: header || `Column ${index + 1}`, type: colType, index: index };
-                 });
+                 columnInfo[index] = { header: header || `Column ${index + 1}`, type: colType, index: index };
+                });
 
-                 console.log("Detected Location Columns:", locationColumns);
-                 console.log("Column Analysis:", columnInfo);
+                console.log("Detected Location Columns:", locationColumns);
+                console.log("Column Analysis:", columnInfo);
             }
 
             // --- UI Update Functions ---
-             function resetUI() {
+            function resetUI() {
                 dataSection.classList.add('hidden');
                 mapSection.classList.add('hidden');
                 fileData = null;
@@ -880,6 +880,16 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ postcodes: postcodesToLookup })
                         });
+
+                        if (!response.ok) {
+                            // Handle HTTP errors (e.g., 400, 500)
+                            console.error('HTTP error during geocoding:', response.status, response.statusText);
+                            geocodingStatusEl.textContent = `Geocoding failed: HTTP ${response.status} ${response.statusText}`;
+                            failedCount += postcodesToLookup.length; // Assume all failed
+                            geocodeBtn.disabled = false;
+                            mapBtn.disabled = !(locationColumns.lat === -1 || locationColumns.long === -1);
+                            return;
+                        }
                         const results = await response.json();
 
                         if (results.status === 200) {
@@ -919,14 +929,12 @@
                     }
                 }
 
-                geocodingStatusEl.textContent = `Geocoding complete. Successful: ${geocodedCount}, Failed/Not Found: ${failedCount}.`;
-                console.log(geocodingStatusEl.textContent)
-
                 if (geocodedCount === rowsToGeocode.length) {
+                    geocodingStatusEl.textContent = `Geocoding complete. Successful: ${geocodedCount}, Failed/Not Found: ${failedCount}.`;
+                    console.log(geocodingStatusEl.textContent)
                     geocodingStatusEl.classList.add('success');
-                    setTimeout(() => {
-                        geocodingStatusEl.classList.remove('success');
-                    }, 3000);
+                    await new Promise(resolve => setTimeout(resolve, 4000));
+                    geocodingStatusEl.classList.remove('success')
                 }
                 processLoadedData(); // Re-analyze columns, updates preview, and button states
             }
@@ -1491,7 +1499,6 @@
 
                 return 'text';
             }
-
             function getColorForValue(value, min, max) {
                 if (max === min) return 'rgb(180, 180, 180)';
                 const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)));
@@ -1542,22 +1549,64 @@
 
                 return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
             }
+            // Helper to stringify anything
+            function stringify(data) {
+              try {
+                return typeof data === 'object' ? JSON.stringify(data) : String(data);
+              } catch (e) {
+                return '[Unserializable Object]';
+              }
+            }
             // Logging
-            const originalLog = console.log.bind(console);
             let logs = [];
-            console.log = function(...args) {
-              logs.push(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' '));
-              originalLog(...args);
-              if (logs.length > 0) logBtn.disabled = false;
+
+            ['log', 'warn', 'error', 'info'].forEach(level => {
+              const original = console[level].bind(console);
+              console[level] = (...args) => {
+                logs.push(`[console.${level}] ${args.map(stringify).join(' ')}`);
+                logBtn.disabled = false;
+                original(...args);
+              };
+            });
+            // Add network requests to log
+            const originalFetch = window.fetch;
+            window.fetch = async (...args) => {
+              try {
+                const response = await originalFetch(...args);
+                if (!response.ok) {
+                  logs.push(`[fetch] ${args[0]} -> ${response.status} ${response.statusText}`);
+                }
+                return response;
+              } catch (error) {
+                logs.push(`[fetch] ${args[0]} -> NETWORK ERROR: ${error.message}`);
+                throw error;
+              }
+            };
+            const originalOpen = XMLHttpRequest.prototype.open;
+            const originalSend = XMLHttpRequest.prototype.send;
+
+            XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+              this._requestUrl = url;
+              this._requestMethod = method;
+              return originalOpen.call(this, method, url, ...rest);
+            };
+
+            XMLHttpRequest.prototype.send = function (...args) {
+              this.addEventListener('loadend', function () {
+                if (this.status >= 400) {
+                  logs.push(`[XHR] ${this._requestMethod} ${this._requestUrl} -> ${this.status} ${this.statusText}`);
+                }
+              });
+              return originalSend.apply(this, args);
             };
             logBtn.addEventListener('click', () => {
-              const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'console-log.txt';
-              a.click();
-              URL.revokeObjectURL(url);
+                const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'console-log.txt';
+                a.click();
+                URL.revokeObjectURL(url);
             });
         });
     </script>
