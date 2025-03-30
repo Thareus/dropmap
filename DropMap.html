@@ -975,33 +975,45 @@
                 const bounds = [];
                 const dataRows = currentSheetData.slice(1);
 
-                // Create a Marker Cluster Group
-                const markers = L.markerClusterGroup({
-                    spiderfyOnMaxZoom: true,
-                    showCoverageOnHover: false,
-                    zoomToBoundsOnClick: false
-                });
+                function jitterCoordinate(coord, amount = 0.0005) {  // Amount is the maximum offset
+                    const plusOrMinus = Math.random() < 0.5 ? -1 : 1;
+                    return coord + plusOrMinus * Math.random() * amount;
+                }
+
+                const seenCoordinates = {};
 
                 dataRows.forEach((row, rowIndex) => {
                     const lat = parseFloat(row[locationColumns.lat]);
                     const long = parseFloat(row[locationColumns.long]);
 
+                    const coordKey = `${lat.toFixed(6)},${long.toFixed(6)}`; // Use 6 decimal places for comparison
+
                     if (!isNaN(lat) && !isNaN(long)) {
-                        const marker = L.marker([lat, long]);
+                        let displayLat = lat;
+                        let displayLong = long;
+
+                        if (seenCoordinates[coordKey]) {
+                            // Offset the coordinates
+                            displayLat = jitterCoordinate(lat);
+                            displayLong = jitterCoordinate(long);
+                        }
+
+                        seenCoordinates[coordKey] = true;
+                        const marker = L.marker([displayLat, displayLong]);
                         marker.bindPopup(createPopupContent(row));
 
                         // Store original data with the marker
                         originalMarkerData.push({ marker: marker, data: row, originalIndex: rowIndex + 1 });
                         mapMarkers.push(marker);
-                        markers.addLayer(marker);
-                        bounds.push([lat, long]);
+                        marker.addTo(map);
+                        bounds.push([displayLat, displayLong]);
                     } else {
                         // Keep track of rows that couldn't be mapped
                         console.warn(`Skipping row ${rowIndex + 1}: Invalid Lat/Long (${row[locationColumns.lat]}, ${row[locationColumns.long]})`);
                     }
                 });
 
-                 if (bounds.length > 0) {
+                if (bounds.length > 0) {
                     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
                 } else {
                      // Handle case where no valid coordinates were found
@@ -1012,7 +1024,6 @@
                 }
                 // Apply initial overlay if one was selected (unlikely state, but for robustness)
                 applyOverlayStyle();
-                map.addLayer(markers); // Add MarkerClusterGroup to map
             }
 
             function createPopupContent(rowData) {
