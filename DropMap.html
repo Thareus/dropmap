@@ -8,6 +8,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
     <style>
         :root {
             --primary-color: #0066cc;
@@ -904,11 +907,10 @@
                     } catch (error) {
                         console.error('Network error during geocoding:', error);
                         failedCount += postcodesToLookup.length; // Assume all in batch failed on network error
-                         geocodingStatusEl.textContent = `Geocoding error: ${error.message}. Stopping.`;
-                         console.log(geocodingStatusEl.textContent)
-                         geocodeBtn.disabled = false; // Re-enable buttons on failure
-                         mapBtn.disabled = !(locationColumns.lat === -1 || locationColumns.long === -1);
-                         return; // Stop geocoding on critical error
+                        geocodingStatusEl.textContent = `Geocoding error: ${error.message}. Stopping.`;
+                        geocodeBtn.disabled = false; // Re-enable buttons on failure
+                        mapBtn.disabled = !(locationColumns.lat === -1 || locationColumns.long === -1);
+                        return; // Stop geocoding on critical error
                     }
 
                     // Delay between batches to be nice to the API
@@ -973,6 +975,13 @@
                 const bounds = [];
                 const dataRows = currentSheetData.slice(1);
 
+                // Create a Marker Cluster Group
+                const markers = L.markerClusterGroup({
+                    spiderfyOnMaxZoom: true,
+                    showCoverageOnHover: false,
+                    zoomToBoundsOnClick: false
+                });
+
                 dataRows.forEach((row, rowIndex) => {
                     const lat = parseFloat(row[locationColumns.lat]);
                     const long = parseFloat(row[locationColumns.long]);
@@ -981,14 +990,14 @@
                         const marker = L.marker([lat, long]);
                         marker.bindPopup(createPopupContent(row));
 
-                         // Store original data with the marker
-                         originalMarkerData.push({ marker: marker, data: row, originalIndex: rowIndex + 1 });
-                         mapMarkers.push(marker);
-                         marker.addTo(map);
-                         bounds.push([lat, long]);
+                        // Store original data with the marker
+                        originalMarkerData.push({ marker: marker, data: row, originalIndex: rowIndex + 1 });
+                        mapMarkers.push(marker);
+                        markers.addLayer(marker);
+                        bounds.push([lat, long]);
                     } else {
                         // Keep track of rows that couldn't be mapped
-                         console.warn(`Skipping row ${rowIndex + 1}: Invalid Lat/Long (${row[locationColumns.lat]}, ${row[locationColumns.long]})`);
+                        console.warn(`Skipping row ${rowIndex + 1}: Invalid Lat/Long (${row[locationColumns.lat]}, ${row[locationColumns.long]})`);
                     }
                 });
 
@@ -1000,9 +1009,10 @@
                      // Optionally hide map section again or show a message
                      mapSection.classList.add('hidden');
                      return;
-                 }
-                  // Apply initial overlay if one was selected (unlikely state, but for robustness)
-                 applyOverlayStyle();
+                }
+                // Apply initial overlay if one was selected (unlikely state, but for robustness)
+                applyOverlayStyle();
+                map.addLayer(markers); // Add MarkerClusterGroup to map
             }
 
             function createPopupContent(rowData) {
