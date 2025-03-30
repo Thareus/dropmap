@@ -888,9 +888,9 @@
                                         if (originalRow[locationColumns.postcode]?.toString().trim() === item.query) {
                                             originalRow[locationColumns.lat] = latitude;
                                             originalRow[locationColumns.long] = longitude;
-                                            geocodedCount++;
                                         }
                                     });
+                                    geocodedCount++;
                                 } else {
                                     // Lookup happened but postcode was invalid according to API
                                     console.warn(`Geocoding query for '${item.query}' failed (Invalid Postcode?).`);
@@ -920,11 +920,13 @@
                 geocodingStatusEl.textContent = `Geocoding complete. Successful: ${geocodedCount}, Failed/Not Found: ${failedCount}.`;
                 console.log(geocodingStatusEl.textContent)
 
-                setTimeout(() => {
-                    // Refresh analysis, preview, and button states
-                    geocodingStatusEl.classList.remove = 'success';
-                    processLoadedData(); // Re-analyze columns, updates preview, and button states
-                }, 3000);
+                if (geocodedCount === rowsToGeocode.length) {
+                    geocodingStatusEl.classList.add('success');
+                    setTimeout(() => {
+                        geocodingStatusEl.classList.remove('success');
+                    }, 3000);
+                }
+                processLoadedData(); // Re-analyze columns, updates preview, and button states
             }
 
             // --- Mapping ---
