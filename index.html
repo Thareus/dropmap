@@ -1490,13 +1490,16 @@
                 if (booleanCheck && uniqueValues.size <= 2) return 'boolean';
 
                 // Check if values look like dates
-                const dateCheck = validData.some(val => typeof val === 'object' && val instanceof Date || (typeof val === 'string' && (val.includes('/') || val.includes('-')) && new Date(val).toString() !== 'Invalid Date'));
+                const dateCheck = validData.every(val => 
+                    (typeof val === 'object' && val instanceof Date && !isNaN(val.getTime())) ||
+                    (typeof val === 'string' && (val.includes('/') || val.includes('-')) && new Date(val).toString() !== 'Invalid Date')
+                );
                 if (dateCheck && uniqueValues.size < 100) return 'date';
 
                 // Numeric check
                 const numericCheck = validData.every(val => !isNaN(parseFloat(val)) && isFinite(val));
                 // Categorical check (relatively few unique string values)
-                if (!numericCheck && (uniqueValues.size <= 25 && uniquenessRatio < 0.4)) {return 'categorical'}
+                if (!numericCheck && (uniqueValues.size <= 25 && uniquenessRatio < 0.5)) {return 'categorical'}
                 // Categorical check with tighter restrictions
                 else if (!numericCheck && (uniqueValues.size <= 5)) {return 'categorical'}
                 // Text/Unique Text (many unique string values)
