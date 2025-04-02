@@ -1380,7 +1380,7 @@
                     updateNumericLegend(col.header, min, max);
                 }
                 else if (col.type === 'categorical') {
-                    const uniqueCategories = new Set(currentSheetData.slice(1).map(val => val[activeOverlayColumnIndex]?.toString().trim()));
+                    const uniqueCategories = new Set(currentSheetData.slice(1).map(val => val[activeOverlayColumnIndex]?.toString().trim()).sort());
                     if (uniqueCategories.length === 0) return;
                     categories = Array.from(uniqueCategories).sort();
                     const colors = generateEvenHexColors(categories);
