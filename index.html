@@ -1133,36 +1133,19 @@
                     };
 
                     // --- Create Overlay Option ---
-                    if (col.type === 'numeric') {
-                        const overlayDiv = document.createElement('div');
-                        const radioId = `overlay-${col.index}`;
-                        const radio = document.createElement('input');
-                        radio.type = 'radio';
-                        radio.id = radioId;
-                        radio.name = 'overlay-column';
-                        radio.value = col.index;
-                        const label = document.createElement('label');
-                        label.htmlFor = radioId;
-                        label.textContent = col.header;
-                        overlayDiv.appendChild(radio);
-                        overlayDiv.appendChild(label);
-                        overlayOptionsContainer.appendChild(overlayDiv);
-                    }
-                    else if (col.type === 'categorical') {
-                        const overlayDiv = document.createElement('div');
-                        const radioId = `overlay-${col.index}`;
-                        const radio = document.createElement('input');
-                        radio.type = 'radio';
-                        radio.id = radioId;
-                        radio.name = 'overlay-column';
-                        radio.value = col.index;
-                        const label = document.createElement('label');
-                        label.htmlFor = radioId;
-                        label.textContent = col.header;
-                        overlayDiv.appendChild(radio);
-                        overlayDiv.appendChild(label);
-                        overlayOptionsContainer.appendChild(overlayDiv);
-                    }
+                    const overlayDiv = document.createElement('div');
+                    const radioId = `overlay-${col.index}`;
+                    const radio = document.createElement('input');
+                    radio.type = 'radio';
+                    radio.id = radioId;
+                    radio.name = 'overlay-column';
+                    radio.value = col.index;
+                    const label = document.createElement('label');
+                    label.htmlFor = radioId;
+                    label.textContent = col.header;
+                    overlayDiv.appendChild(radio);
+                    overlayDiv.appendChild(label);
+                    overlayOptionsContainer.appendChild(overlayDiv);
 
                     // --- Create Filter Controls ---
                     const dataRows = currentSheetData.slice(1);
