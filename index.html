@@ -1060,9 +1060,13 @@
                 popupDiv.appendChild(table);
                 return popupDiv;
             }
+            // Format date for display
+            const formatDate = (timestamp) => {
+                const date = new Date(parseInt(timestamp));
+                return date.toLocaleDateString("en-GB", { year: 'numeric', month: '2-digit', day: '2-digit'});
+            };
 
             // --- Filtering and Overlays ---
-
             function createFilterControls() {
                 columnFiltersContainer.innerHTML = ''; // Clear existing filters
                 overlayOptionsContainer.innerHTML = '<div><input type="radio" id="overlay-none" name="overlay-column" value="none" checked><label for="overlay-none">None</label></div>'; // Reset overlays
@@ -1070,7 +1074,7 @@
                 Object.values(columnInfo).forEach(col => {
                     // Don't create filters for lat/long/postcode or non-filterable types
                     if (col.index === locationColumns.lat || col.index === locationColumns.long || col.index === locationColumns.postcode ||
-                        ['identifier', 'text-unique', 'unknown', 'null-column', 'date', 'text'].includes(col.type)) {
+                        ['identifier', 'text-unique', 'unknown', 'null-column', 'text'].includes(col.type)) {
                         return;
                     }
 
@@ -1083,6 +1087,50 @@
                     const controlsDiv = document.createElement('div');
                     controlsDiv.className = 'filter-controls';
                     controlsDiv.dataset.columnIndex = col.index; // Store index for filtering
+
+                    // Use two sliders for range filtering
+                    const createSlider = (coltype, id, labelText, defaultValue, min, max, step) => {
+                        const label = document.createElement('label');
+                        label.htmlFor = id;
+                        label.textContent = labelText;
+
+                        const slider = document.createElement('input');
+                        slider.type = 'range';
+                        slider.id = id;
+                        slider.min = min;
+                        slider.max = max;
+                        slider.step = step
+                        slider.value = defaultValue;
+
+                        // Set initial value for the slider
+                        const valueSpan = document.createElement('span');
+                        if (coltype === 'date'){
+                            valueSpan.textContent = ` ${formatDate(defaultValue)}`;
+                        } else if (coltype === 'numeric') {
+                            valueSpan.textContent = ` ${parseFloat(defaultValue).toFixed(2)}`;
+                        } else {
+                            valueSpan.textContent = ` ${parseInt(defaultValue)}`;
+                        }
+
+                        // Update slider value on input
+                        slider.addEventListener('input', () => {
+                            if (coltype === 'date'){
+                                valueSpan.textContent = ` ${formatDate(slider.value)}`;
+                            } else if (coltype === 'numeric') {
+                                valueSpan.textContent = ` ${parseFloat(slider.value).toFixed(2)}`;
+                            } else {
+                                valueSpan.textContent = ` ${parseInt(slider.value)}`;
+                            }
+                            applyFilters();
+                        });
+
+                        controlsDiv.appendChild(label);
+                        controlsDiv.appendChild(slider);
+                        controlsDiv.appendChild(valueSpan);
+                        controlsDiv.appendChild(document.createElement('br'));
+
+                        return slider;
+                    };
 
                     // --- Create Overlay Option ---
                     if (col.type === 'numeric') {
@@ -1119,38 +1167,95 @@
                     // --- Create Filter Controls ---
                     const dataRows = currentSheetData.slice(1);
 
-                    if (col.type === 'numeric') {
+                    if (col.type === 'date') {
+                        // Extract dates and convert to timestamps for easier manipulation
+                        const dates = dataRows.map(row => {
+                            const dateValue = new Date(row[col.index]);
+                            return isNaN(dateValue.getTime()) ? null : dateValue.getTime();
+                        }).filter(v => v !== null);
+
+                        if (dates.length === 0) return;
+
+                        const minTimestamp = Math.min(...dates);
+                        const maxTimestamp = Math.max(...dates);
+
+                        // Calculate a reasonable step (1 day in milliseconds)
+                        const dayInMs = 24 * 60 * 60 * 1000;
+                        const stepSize = Math.min(dayInMs, (maxTimestamp - minTimestamp) / 100 || dayInMs);
+
+                        const minSlider = createSlider(col.type, `filter-min-${col.index}`, `From:`, minTimestamp,  minTimestamp, maxTimestamp, stepSize);
+                        const maxSlider = createSlider(col.type, `filter-max-${col.index}`, `To:`, maxTimestamp, minTimestamp, maxTimestamp, stepSize);
+
+                        // Ensure min <= max constraint
+                        let isSyncing = false;
+                        minSlider.addEventListener('input', () => {
+                            if (isSyncing) return;
+                            const minValue = parseInt(minSlider.value);
+                            const maxValue = parseInt(maxSlider.value);
+                            if (minValue > maxValue) {
+                                isSyncing = true;
+                                maxSlider.value = minValue;
+                                maxSlider.dispatchEvent(new Event('input'));
+                                isSyncing = false;
+                            }
+                        });
+
+                        maxSlider.addEventListener('input', () => {
+                            if (isSyncing) return;
+                            const maxValue = parseInt(maxSlider.value);
+                            const minValue = parseInt(minSlider.value);
+                            if (maxValue < minValue) {
+                                isSyncing = true;
+                                minSlider.value = maxValue;
+                                minSlider.dispatchEvent(new Event('input'));
+                                isSyncing = false;
+                            }
+                        });
+
+                        // Add a calendar icon or date picker for better UX (optional enhancement)
+                        const addDatePicker = (sliderId, sliderElement) => {
+                            const datePickerBtn = document.createElement('button');
+                            datePickerBtn.innerHTML = '📅';
+                            datePickerBtn.title = 'Select date';
+                            datePickerBtn.className = 'date-picker-btn';
+                            datePickerBtn.style.marginLeft = '5px';
+
+                            datePickerBtn.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                const dateInput = document.createElement('input');
+                                dateInput.type = 'date';
+                                dateInput.value = new Date(parseInt(sliderElement.value)).toISOString().split('T')[0];
+                                console.log(dateInput.value)
+
+                                dateInput.addEventListener('change', () => {
+                                    const selectedDate = new Date(dateInput.value);
+                                    if (!isNaN(selectedDate.getTime())) {
+                                        sliderElement.value = selectedDate.getTime();
+                                        sliderElement.dispatchEvent(new Event('input'));
+                                    }
+                                    dateInput.remove();
+                                });
+
+                                // Insert after the button
+                                datePickerBtn.parentNode.insertBefore(dateInput, datePickerBtn.nextSibling);
+                                dateInput.focus();
+                            });
+
+                            sliderElement.parentNode.insertBefore(datePickerBtn, sliderElement.nextSibling);
+                        };
+
+                        // Add date pickers (optional)
+                        addDatePicker(`picker-min-${col.index}`, minSlider);
+                        addDatePicker(`picker-max-${col.index}`, maxSlider);
+                    } else if (col.type === 'numeric') {
                         const values = dataRows.map(row => parseFloat(row[col.index])).filter(v => !isNaN(v));
                         if (values.length === 0) return;
                         const min = Math.min(...values);
                         const max = Math.max(...values);
-                        // Use two sliders for range filtering
-                        const createSlider = (id, labelText, defaultValue) => {
-                            const label = document.createElement('label');
-                            label.htmlFor = id;
-                            label.textContent = labelText;
-                            const slider = document.createElement('input');
-                            slider.type = 'range';
-                            slider.id = id;
-                            slider.min = min;
-                            slider.max = max;
-                            slider.step = (max - min) / 100 || 0.01;
-                            slider.value = defaultValue;
-                            const valueSpan = document.createElement('span');
-                            valueSpan.textContent = ` ${parseFloat(defaultValue).toFixed(2)}`;
-                            slider.addEventListener('input', () => {
-                                valueSpan.textContent = ` ${parseFloat(slider.value).toFixed(2)}`;
-                                applyFilters();
-                            });
-                            controlsDiv.appendChild(label);
-                            controlsDiv.appendChild(slider);
-                            controlsDiv.appendChild(valueSpan);
-                            controlsDiv.appendChild(document.createElement('br'));
-                            return slider;
-                        };
+                        const stepSize = (max - min) / 100 || 0.01;
 
-                        const minSlider = createSlider(`filter-min-${col.index}`, `Min:`, min);
-                        const maxSlider = createSlider(`filter-max-${col.index}`, `Max:`, max);
+                        const minSlider = createSlider(col.type, `filter-min-${col.index}`, `Min:`, min, min, max, stepSize);
+                        const maxSlider = createSlider(col.type, `filter-max-${col.index}`, `Max:`, max, min, max, stepSize);
 
                         // Ensure min <= max constraint
                         let isSyncing = false;
@@ -1237,8 +1342,19 @@
                     const colIndex = parseInt(controlDiv.dataset.columnIndex);
                     const colName = columnInfo[colIndex]['header'];
                     const colType = columnInfo[colIndex]?.type;
-
-                    if (colType === 'numeric') {
+                    
+                    if (colType === 'date') {
+                        const minSlider = controlDiv.querySelector(`#filter-min-${colIndex}`);
+                        const maxSlider = controlDiv.querySelector(`#filter-max-${colIndex}`);
+                        if (minSlider && maxSlider) {
+                            activeFilters[colIndex] = {
+                                name: colName,
+                                type: 'date',
+                                min: parseFloat(minSlider.value),
+                                max: parseFloat(maxSlider.value)
+                            };
+                        }
+                    } else if (colType === 'numeric') {
                         const minSlider = controlDiv.querySelector(`#filter-min-${colIndex}`);
                         const maxSlider = controlDiv.querySelector(`#filter-max-${colIndex}`);
                         if (minSlider && maxSlider) {
@@ -1277,7 +1393,12 @@
 
                         let filterPasses = true;
 
-                        if (filter.type === 'numeric') {
+                        if (filter.type === 'date') {
+                            const numValue = parseInt(value.getTime());
+                            if (numValue < filter.min || numValue > filter.max) {
+                                filterPasses = false;
+                            }
+                        } else if (filter.type === 'numeric') {
                             const numValue = parseFloat(value);
                             if (numValue < filter.min || numValue > filter.max) {
                                 filterPasses = false;
@@ -1343,7 +1464,50 @@
                     console.warn("Selected overlay column is not found.");
                     return;
                 }
-                if (col.type === 'numeric') {
+                if (col.type === 'date') {
+                    // Calculate min/max for the overlay column from the original data
+                    const dates = currentSheetData.slice(1)
+                        .map(row => {
+                            const dateValue = new Date(row[activeOverlayColumnIndex]);
+                            return isNaN(dateValue.getTime()) ? null : dateValue.getTime();
+                        })
+                        .filter(v => v !== null);
+                    
+                    if (dates.length === 0) return;
+
+                    const minTimestamp = Math.min(...dates);
+                    const maxTimestamp = Math.max(...dates);
+
+                    // Apply styles to *currently visible* markers
+                    mapMarkers.forEach(marker => {
+                        // Find the original data associated with this visible marker
+                        const itemData = originalMarkerData.find(item => item.marker === marker);
+                        if (!itemData) return;
+
+                        const dateValue = new Date(itemData.data[activeOverlayColumnIndex]);
+                        const timestamp = dateValue.getTime();
+                        
+                        if (!isNaN(timestamp)) {
+                            const color = getColorForValue(timestamp, minTimestamp, maxTimestamp);
+                            marker.setIcon(L.divIcon({
+                                className: 'custom-marker-icon',
+                                html: `<div style="background-color: ${color}; width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.5); box-shadow: 0 0 3px rgba(0,0,0,0.5);"></div>`,
+                                iconSize: [16, 16],
+                                iconAnchor: [8, 8]
+                            }));
+                        } else {
+                            marker.setIcon(L.divIcon({
+                                className: 'custom-marker-icon',
+                                html: `<div style="background-color: #cccccc; width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.5); box-shadow: 0 0 3px rgba(0,0,0,0.5);"></div>`,
+                                iconSize: [16, 16],
+                                iconAnchor: [8, 8]
+                            }));
+                        }
+                    });
+                    
+                    // Create a date-specific legend update function
+                    updateDateLegend(col.header, minTimestamp, maxTimestamp);
+                } else if (col.type === 'numeric') {
                     // Calculate min/max for the overlay column from the original data
                     const values = currentSheetData.slice(1)
                       .map(row => parseFloat(row[activeOverlayColumnIndex]))
@@ -1410,6 +1574,39 @@
                 }
                 // Show legend
                 mapLegend.classList.remove('hidden');
+            }
+            function updateDateLegend(title, min, max) {
+                legendItems.innerHTML = '';
+                mapLegend.querySelector('h4').textContent = `Legend: ${title}`;
+
+                // Create 5 steps for the legend
+                const steps = 5;
+                for (let i = 0; i < steps; i++) {
+                    const value = min + (max - min) * (i / (steps - 1));
+                    const color = getColorForValue(value, min, max);
+
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    const colorBox = document.createElement('div');
+                    colorBox.className = 'legend-color';
+                    colorBox.style.backgroundColor = color;
+                    const label = document.createElement('span');
+                    // Show range or single value depending on step
+                    if (i < steps - 1) {
+                        const nextValue = min + (max - min) * ((i + 1) / (steps - 1));
+                        label.textContent = `${formatDate(value)} - ${formatDate(nextValue)}`;
+                    } else {
+                         label.textContent = `≥ ${formatDate(value)}`;
+                    }
+                    // For the first item, adjust label
+                    if (i === 0 && steps > 1) {
+                         label.textContent = `≤ ${formatDate(value)}`;
+                    }
+
+                    legendItem.appendChild(colorBox);
+                    legendItem.appendChild(label);
+                    legendItems.appendChild(legendItem);
+                }
             }
             function updateNumericLegend(title, min, max) {
                 legendItems.innerHTML = '';
