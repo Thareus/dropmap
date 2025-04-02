@@ -1176,10 +1176,9 @@
                                 isSyncing = false;
                             }
                         });
-
                     } else if (col.type === 'categorical') {
                         const uniqueValues = [...new Set(dataRows.map(row => row[col.index]?.toString().trim() || '(Blank)'))].sort();
-                        if (uniqueValues.length === 0 || uniqueValues.length > 100) return;
+                        if (uniqueValues.length === 0 || uniqueValues.length > 25) return;
 
                         const checkboxGroup = document.createElement('div');
                         checkboxGroup.className = 'checkbox-group';
