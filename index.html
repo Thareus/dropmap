@@ -221,6 +221,9 @@
             margin: 0 0 5px 0;
             font-size: 1em;
         }
+        #hide-legend {
+            float: right;
+        }
         .legend-item {
             display: flex;
             align-items: center;
@@ -443,6 +446,7 @@
                 <div id="map-wrapper">
                     <div id="map"></div>
                      <div id="map-legend" class="hidden">
+                        <button id="hide-legend">X</button>
                         <h4>Legend</h4>
                         <div id="legend-items"></div>
                     </div>
@@ -481,6 +485,7 @@
             const mapWrapper = document.getElementById('map-wrapper');
             const mapDiv = document.getElementById('map');
             const mapLegend = document.getElementById('map-legend');
+            const hideLegend = document.getElementById('hide-legend');
             const legendItems = document.getElementById('legend-items');
             // Loging Elements
             const logSection = document.getElementById('logs-section')
@@ -1457,6 +1462,8 @@
                     legendItems.appendChild(legendItem);
                 }
             }
+            // Hide legend
+            hideLegend.addEventListener('click', () => {mapLegend.classList.add('hidden')});
 
             // --- Helper Functions ---
             function detectColumnType(columnHeader, columnData) {
