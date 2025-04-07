@@ -1228,11 +1228,11 @@
 
                     sliderElement.parentNode.insertBefore(datePickerBtn, sliderElement.nextSibling);
                 };
-                const createCheckbox = (id, labelText) => {
+                const createBlankCheckbox = (id) => {
                     const div = document.createElement('div');
                     div.className = 'inline checkbox';
                     const span = document.createElement('span');
-                    span.textContent = labelText;
+                    span.textContent = `Blank:`;
                     div.appendChild(span);
                     const checkbox = document.createElement('input');
                     const checkboxId = `filter-${id}-blank`;
@@ -1280,7 +1280,7 @@
 
                     const minSlider = createSlider(col.type, `filter-min-${col.index}`, `From:`, minTimestamp,  minTimestamp, maxTimestamp, stepSize);
                     const maxSlider = createSlider(col.type, `filter-max-${col.index}`, `To:`, maxTimestamp, minTimestamp, maxTimestamp, stepSize);
-                    const blankSelector = createCheckbox(col.index, `Blank:`);
+                    const blankSelector = createBlankCheckbox(col.index);
                     controlsDiv.appendChild(blankSelector);
 
                     // Ensure min <= max constraint
@@ -1320,7 +1320,7 @@
 
                     const minSlider = createSlider(col.type, `filter-min-${col.index}`, `Min:`, min, min, max, stepSize);
                     const maxSlider = createSlider(col.type, `filter-max-${col.index}`, `Max:`, max, min, max, stepSize);
-                    const blankSelector = createCheckbox(col.index, `Blank:`);
+                    const blankSelector = createBlankCheckbox(col.index);
                     controlsDiv.appendChild(blankSelector);
 
                     // Ensure min <= max constraint
@@ -1353,8 +1353,8 @@
                     const checkboxGroup = document.createElement('div');
                     checkboxGroup.className = 'checkbox-group';
                     uniqueValues.forEach(value => {
-                        const div = document.createElement('div');
                         const checkboxId = `filter-${col.index}-${value.replace(/[^a-zA-Z0-9]/g, '')}`;
+                        const div = document.createElement('div');
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.id = checkboxId;
@@ -1391,7 +1391,7 @@
                         radioGroup.appendChild(div);
                     });
                     // Create button for including blanks
-                    const blankSelector = createCheckbox(col.index, `Blank:`);
+                    const blankSelector = createBlankCheckbox(col.index);
                     controlsDiv.appendChild(radioGroup);
                     controlsDiv.appendChild(blankSelector);
                 }
