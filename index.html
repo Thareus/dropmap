@@ -8,9 +8,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
     <style>
         :root {
             --primary-color: #0066cc;
@@ -870,9 +867,6 @@
                 const row = rowsToExtract[i]
                 const address = row[locationColumns.address]?.toString().trim();
                 if (address.length === 0) continue;
-
-                preparationStatusEl.textContent = `Extracting postcode for ${address}`;
-                console.log(preparationStatusEl.textContent)
                 const postcodeMatch = address.match(postcodeRegex)
                 const postcode = postcodeMatch ? postcodeMatch[0] : null;
                 if (postcode) {
@@ -948,8 +942,6 @@
 
                 if (postcodesToLookup.length === 0) continue;
 
-                preparationStatusEl.textContent = `Geocoding batch ${Math.floor(i / GEOCODE_BATCH_LIMIT) + 1}... (${geocodedCount} successful, ${failedCount} failed)`;
-                console.log(preparationStatusEl.textContent)
                 try {
                     const response = await fetch(GEOCODE_API, {
                         method: 'POST',
@@ -1137,7 +1129,7 @@
             return date.toLocaleDateString("en-GB", { year: 'numeric', month: '2-digit', day: '2-digit'});
         };
 
-        // --- Filtering and Overlays ---
+        // --- Filtering ---
         function createFilterControls() {
             columnFiltersContainer.innerHTML = ''; // Clear existing filters
             overlayOptionsContainer.innerHTML = '<div><input type="radio" id="overlay-none" name="overlay-column" value="none" checked><label for="overlay-none">None</label></div>'; // Reset overlays
@@ -1219,7 +1211,6 @@
                         const dateInput = document.createElement('input');
                         dateInput.type = 'date';
                         dateInput.value = new Date(parseInt(sliderElement.value)).toISOString().split('T')[0];
-                        console.log("Date selected", dateInput.value)
 
                         dateInput.addEventListener('change', () => {
                             const selectedDate = new Date(dateInput.value);
@@ -1486,16 +1477,11 @@
                         if (value === undefined || value === null) {
                             if (!filter.blanks) {
                                 filterPasses = false;
-                                console.log("breaks on filter blanks")
                             };
                         } else {
                             numValue = parseInt(value.getTime())
-                            console.log(filter.name, numValue)
-                            console.log(filter.min, value < filter.min, formatDate(filter.min))
-                            console.log(filter.max, value > filter.max, formatDate(filter.max))
                             if (value < filter.min || value > filter.max) {
                                 filterPasses = false;
-                                console.log("breaks on filter numbers")
                             };
                         }
                     } else if (filter.type === 'numeric') {
@@ -1543,7 +1529,7 @@
             // Re-apply overlay styling to the now visible markers
             applyOverlayStyle();
         }
-
+        // --- Overlays ---
         function handleOverlayChange(event) {
             if (event.target.name === 'overlay-column') {
                 const selectedValue = event.target.value;
@@ -1881,7 +1867,6 @@
         }
         // --- Logging ---
         let logs = [];
-
         ['log', 'warn', 'error', 'info'].forEach(level => {
           const original = console[level].bind(console);
           console[level] = (...args) => {
