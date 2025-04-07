@@ -152,7 +152,7 @@
              background-color: #e6f2ff;
         }
 
-        #geocoding-status {
+        #preparation-status {
             margin-top: 15px;
             padding: 10px;
             background-color: var(--light-gray);
@@ -160,7 +160,7 @@
             font-size: 0.9em;
             color: var(--dark-gray);
         }
-        #geocoding-status.success {
+        #preparation-status.success {
             font-size: large;
             font-weight: bold;
             border: 5px solid transparent;
@@ -419,9 +419,10 @@
             </div>
 
             <div id="actions-container">
-                <button id="geocode-btn" class="btn btn-secondary" disabled>Geocode Missing Postcodes (UK)</button>
-                <button id="map-btn" class="btn" disabled>3. Create Map</button>
-                <div id="geocoding-status">Geocoding status will appear here. Uses postcodes.io (UK only).</div>
+                <button id="postcode-btn" class="btn btn-secondary" disabled>Extract Postcodes</button>
+                <button id="geocode-btn" class="btn btn-secondary" disabled>Geocode Postcodes (UK)</button>
+                <button id="map-btn" class="btn" disabled>Create Map</button>
+                <div id="preparation-status">Geocoding status will appear here. Uses postcodes.io (UK only).</div>
             </div>
         </section>
 
@@ -479,8 +480,9 @@
         const previewContainer = document.getElementById('preview-container');
         const sheetSelectorContainer = document.getElementById('sheet-selector-container');
         const tableContainer = document.getElementById('table-container');
+        const postcodeBtn = document.getElementById('postcode-btn');
         const geocodeBtn = document.getElementById('geocode-btn');
-        const geocodingStatusEl = document.getElementById('geocoding-status');
+        const preparationStatusEl = document.getElementById('preparation-status');
         const mapBtn = document.getElementById('map-btn');
         // Map Section Elements
         const mapSection = document.getElementById('map-section');
@@ -501,7 +503,7 @@
         let currentSheetData = null; // Array of arrays for the selected sheet/CSV
         let currentHeaders = [];
         let columnInfo = {}; // { header, type, index }
-        let locationColumns = { postcode: -1, lat: -1, long: -1 }; // Indices
+        let locationColumns = {address:-1, postcode: -1, lat: -1, long: -1 }; // Indices
 
         let map = null;
         let mapMarkers = []; // Array of Leaflet marker instances
@@ -510,6 +512,7 @@
 
         // --- Constants ---
         const PREVIEW_ROW_LIMIT = 10;
+        const ADDRESS_COLUMNS = ['address', 'full address', 'address1', 'address 1'];
         const POSTCODE_COLUMNS = ['postcode', 'post code', 'postal code', 'zip', 'zipcode'];
         const LAT_COLUMNS = ['latitude', 'lat', 'lattitude', 'y'];
         const LONG_COLUMNS = ['longitude', 'long', 'lng', 'lon', 'x'];
@@ -539,6 +542,7 @@
             fileInput.addEventListener('change', handleFileSelect, false);
 
             // Action Buttons
+            postcodeBtn.addEventListener('click', extractPostcodes);
             geocodeBtn.addEventListener('click', handleGeocodeClick);
             mapBtn.addEventListener('click', handleMapClick);
 
@@ -687,13 +691,15 @@
 
              // Update UI State
              dataSection.classList.remove('hidden');
+             // Enable postcode extract button if address column found
+             postcodeBtn.disabled = locationColumns.address === -1;
              // Enable geocode if a postcode column is found
              geocodeBtn.disabled = locationColumns.postcode === -1;
              // Enable map button if lat/long columns are found
              mapBtn.disabled = !(locationColumns.lat !== -1 && locationColumns.long !== -1);
 
-             geocodingStatusEl.textContent = locationColumns.postcode !== -1
-                 ? "Ready for geocoding (optional)."
+             preparationStatusEl.textContent = locationColumns.postcode !== -1
+                 ? "Ready."
                  : "No postcode column detected for geocoding.";
 
              // If map section was previously visible, hide it until 'Create Map' is clicked again
@@ -708,7 +714,7 @@
 
         function analyzeColumns() {
             columnInfo = {}; // Reset column info
-            locationColumns = { postcode: -1, lat: -1, long: -1 };
+            locationColumns = {address:-1, postcode: -1, lat: -1, long: -1 };
 
             if (!currentHeaders || currentHeaders.length === 0) return;
 
@@ -716,6 +722,9 @@
              const headerStr = header ? header.toString().toLowerCase().trim() : undefined;
 
              // Check for Location Columns
+             if (locationColumns.address === -1 && ADDRESS_COLUMNS.includes(headerStr)) {
+                 locationColumns.address = index;
+             }
              if (locationColumns.postcode === -1 && POSTCODE_COLUMNS.includes(headerStr)) {
                  locationColumns.postcode = index;
              }
@@ -745,12 +754,12 @@
             currentSheetData = null;
             currentHeaders = [];
             columnInfo = {};
-            locationColumns = { postcode: -1, lat: -1, long: -1 };
+            locationColumns = { address: -1, postcode: -1, lat: -1, long: -1 };
             sheetSelectorContainer.innerHTML = '';
             tableContainer.innerHTML = '';
             columnFiltersContainer.innerHTML = '';
             overlayOptionsContainer.innerHTML = '<div><input type="radio" id="overlay-none" name="overlay-column" value="none" checked><label for="overlay-none">None</label></div>'; // Reset overlays
-            geocodingStatusEl.textContent = '';
+            preparationStatusEl.textContent = '';
             fileNameEl.textContent = 'Name: -';
             fileTypeEl.textContent = 'Type: -';
             sheetCountEl.textContent = 'Sheets: -';
@@ -827,6 +836,62 @@
              const dataRowCount = currentSheetData.length > 0 ? currentSheetData.length - 1 : 0;
              rowCountEl.textContent = `Rows (current): ${dataRowCount}`;
         }
+        // --- Extract Postcodes ---
+        async function extractPostcodes() {
+            const postcodeRegex = /[a-zA-Z]{1,2}\d{1,2}[a-zA-Z]?\s\d[a-zA-Z]{2}/g
+            // Ensure Postcode header exists, add if necessary
+            if (locationColumns.postcode === -1) {
+                currentHeaders.push('Postcode');
+                locationColumns.postcode = currentHeaders.length - 1;
+                // Add null placeholder to all data rows for the new column
+                 currentSheetData.slice(1).forEach(row => row.push(null));
+            }
+            // Add new headers back to the first row
+            currentSheetData[0] = currentHeaders;
+
+            // Identify rows needing geocoding
+            const rowsToExtract = currentSheetData.slice(1).filter(row => {
+                const postcode = row[locationColumns.postcode];
+                // Needs extraction if postcode does not exist
+                return !postcode;
+            });
+            if (rowsToExtract.length === 0) {
+                preparationStatusEl.textContent = 'Postcode present for all rows.';
+                console.log(preparationStatusEl.textContent)
+                return;
+            }
+            preparationStatusEl.textContent = `Found ${rowsToExtract.length} rows potentially missing postcodes.`;
+            console.log(preparationStatusEl.textContent)
+            let postcodeCount = 0;
+            let failedCount = 0;
+
+            // Process
+            for (let i = 0; i < rowsToExtract.length; i += 1) {
+                const row = rowsToExtract[i]
+                const address = row[locationColumns.address]?.toString().trim();
+                if (address.length === 0) continue;
+
+                preparationStatusEl.textContent = `Extracting postcode for ${address}`;
+                console.log(preparationStatusEl.textContent)
+                const postcodeMatch = address.match(postcodeRegex)
+                const postcode = postcodeMatch ? postcodeMatch[0] : null;
+                if (postcode) {
+                    row[locationColumns.postcode] = postcode;
+                    postcodeCount++;
+                } else {
+                    console.warn(`Couldn't find postcode in '${address}'.`);
+                    failedCount++;
+                }
+            }
+
+            preparationStatusEl.textContent = `Postcode extraction complete. Successful: ${postcodeCount}, Failed/Not Found: ${failedCount}.`;
+            console.log(preparationStatusEl.textContent)
+            preparationStatusEl.classList.add('success');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            preparationStatusEl.classList.remove('success')
+
+            processLoadedData(); // Re-analyze columns, updates preview, and button states
+        }
 
         // --- Geocoding ---
         async function handleGeocodeClick() {
@@ -835,21 +900,22 @@
                 return;
             }
 
+            postcodeBtn.disabled = true;
             geocodeBtn.disabled = true;
             mapBtn.disabled = true; // Disable map creation during geocoding
-            geocodingStatusEl.textContent = 'Preparing data for geocoding...';
+            preparationStatusEl.textContent = 'Preparing data for geocoding...';
 
             // Ensure Lat/Long headers exist, add if necessary
             if (locationColumns.lat === -1) {
                 currentHeaders.push('Latitude');
                 locationColumns.lat = currentHeaders.length - 1;
                 // Add null placeholder to all data rows for the new column
-                 currentSheetData.slice(1).forEach(row => row.push(null));
+                currentSheetData.slice(1).forEach(row => row.push(null));
             }
              if (locationColumns.long === -1) {
                 currentHeaders.push('Longitude');
                 locationColumns.long = currentHeaders.length - 1;
-                 currentSheetData.slice(1).forEach(row => row.push(null));
+                currentSheetData.slice(1).forEach(row => row.push(null));
             }
 
             // Add new headers back to the first row
@@ -864,15 +930,14 @@
                 return postcode && (!lat || !long || isNaN(parseFloat(lat)) || isNaN(parseFloat(long)));
             });
             if (rowsToGeocode.length === 0) {
-                geocodingStatusEl.textContent = 'No rows require geocoding (Postcode present and Lat/Long already exist).';
-                console.log(geocodingStatusEl.textContent)
+                preparationStatusEl.textContent = 'No rows require geocoding (Postcode present and Lat/Long already exist).';
+                console.log(preparationStatusEl.textContent)
                 geocodeBtn.disabled = false; // Re-enable geocode button
                 mapBtn.disabled = !(locationColumns.lat === -1 || locationColumns.long === -1); // Re-enable map button if coords are valid
                 return;
             }
-
-            geocodingStatusEl.textContent = `Found ${rowsToGeocode.length} rows potentially needing geocoding. Starting... (Using ${GEOCODE_API})`;
-            console.log(geocodingStatusEl.textContent)
+            preparationStatusEl.textContent = `Found ${rowsToGeocode.length} rows potentially needing geocoding. Starting... (Using ${GEOCODE_API})`;
+            console.log(preparationStatusEl.textContent)
             let geocodedCount = 0;
             let failedCount = 0;
 
@@ -883,8 +948,8 @@
 
                 if (postcodesToLookup.length === 0) continue;
 
-                geocodingStatusEl.textContent = `Geocoding batch ${Math.floor(i / GEOCODE_BATCH_LIMIT) + 1}... (${geocodedCount} successful, ${failedCount} failed)`;
-                console.log(geocodingStatusEl.textContent)
+                preparationStatusEl.textContent = `Geocoding batch ${Math.floor(i / GEOCODE_BATCH_LIMIT) + 1}... (${geocodedCount} successful, ${failedCount} failed)`;
+                console.log(preparationStatusEl.textContent)
                 try {
                     const response = await fetch(GEOCODE_API, {
                         method: 'POST',
@@ -895,7 +960,7 @@
                     if (!response.ok) {
                         // Handle HTTP errors (e.g., 400, 500)
                         console.error('HTTP error during geocoding:', response.status, response.statusText);
-                        geocodingStatusEl.textContent = `Geocoding failed: HTTP ${response.status} ${response.statusText}`;
+                        preparationStatusEl.textContent = `Geocoding failed: HTTP ${response.status} ${response.statusText}`;
                         failedCount += postcodesToLookup.length; // Assume all failed
                         geocodeBtn.disabled = false;
                         mapBtn.disabled = !(locationColumns.lat === -1 || locationColumns.long === -1);
@@ -928,7 +993,7 @@
                 } catch (error) {
                     console.error('Network error during geocoding:', error);
                     failedCount += postcodesToLookup.length; // Assume all in batch failed on network error
-                    geocodingStatusEl.textContent = `Geocoding error: ${error.message}. Stopping.`;
+                    preparationStatusEl.textContent = `Geocoding error: ${error.message}. Stopping.`;
                     geocodeBtn.disabled = false; // Re-enable buttons on failure
                     mapBtn.disabled = !(locationColumns.lat === -1 || locationColumns.long === -1);
                     return; // Stop geocoding on critical error
@@ -941,11 +1006,11 @@
             }
 
             if (geocodedCount === rowsToGeocode.length) {
-                geocodingStatusEl.textContent = `Geocoding complete. Successful: ${geocodedCount}, Failed/Not Found: ${failedCount}.`;
-                console.log(geocodingStatusEl.textContent)
-                geocodingStatusEl.classList.add('success');
+                preparationStatusEl.textContent = `Geocoding complete. Successful: ${geocodedCount}, Failed/Not Found: ${failedCount}.`;
+                console.log(preparationStatusEl.textContent)
+                preparationStatusEl.classList.add('success');
                 await new Promise(resolve => setTimeout(resolve, 3000));
-                geocodingStatusEl.classList.remove('success')
+                preparationStatusEl.classList.remove('success')
             }
             processLoadedData(); // Re-analyze columns, updates preview, and button states
         }
@@ -1216,7 +1281,7 @@
                     if (dates.length === 0) return;
 
                     const dayInMs = 24 * 60 * 60 * 1000; // 1 day in milliseconds
-                    
+
                     const minTimestamp = Math.min(...dates) - dayInMs; // Pad the min values
                     const maxTimestamp = Math.max(...dates) + dayInMs; // Pad the max values
 
@@ -1388,13 +1453,13 @@
                         activeFilters[colIndex] = {
                             name: colName,
                             type: 'categorical',
-                            values: selectedValues 
+                            values: selectedValues
                         };
                     } else {
                         activeFilters[colIndex] = {
-                            name: colName, 
+                            name: colName,
                             type: 'categorical',
-                            values: new Set(['__FILTER_OUT_ALL__']) 
+                            values: new Set(['__FILTER_OUT_ALL__'])
                         };
                     }
                 } else if (colType === 'boolean') {
