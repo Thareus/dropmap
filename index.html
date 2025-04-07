@@ -1184,7 +1184,7 @@
                     }
 
                     // Update slider value on input
-                    slider.addEventListener('input', () => {
+                    slider.addEventListener('input', debounce(() => {
                         if (coltype === 'date'){
                             valueSpan.textContent = ` ${formatDate(slider.value)}`;
                         } else if (coltype === 'numeric') {
@@ -1193,7 +1193,7 @@
                             valueSpan.textContent = ` ${parseInt(slider.value)}`;
                         }
                         applyFilters();
-                    });
+                    }, 250));
 
                     // Create inline div for slider
                     const sliderDiv = document.createElement('div');
@@ -1868,7 +1868,18 @@
             return '[Unserializable Object]';
           }
         }
-        // Logging
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+        // --- Logging ---
         let logs = [];
 
         ['log', 'warn', 'error', 'info'].forEach(level => {
