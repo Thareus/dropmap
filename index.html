@@ -382,9 +382,9 @@
     </header>
 
     <main>
-        <!-- 1. Upload Section -->
+        <!-- Upload Section -->
         <section id="upload-section">
-            <h2>1. Upload File</h2>
+            <h2>Upload File</h2>
             <p>Drag and drop your Excel (XLSX, XLS) or CSV file, or use the browse button.</p>
             <div id="drop-area" class="drop-area">
                 <h3>Drop File Here</h3>
@@ -396,7 +396,7 @@
 
         <!-- 2. Data View Section -->
         <section id="data-section" class="hidden">
-            <h2>2. Data Preview & Preparation</h2>
+            <h2>Data Preview & Preparation</h2>
 
             <div id="file-info">
                 <h3>File Information:</h3>
@@ -667,7 +667,7 @@
 
         // --- Data Loading and Processing ---
         function loadSheetData(sheetName) {
-          if (!fileData || fileData.type !== 'excel' || !fileData.sheets[sheetName]) return;
+          if (!fileData || fileData.type !== 'excel' || !fileData.sheets[sheetName]) return; // Only excel files have sheets.
           currentSheetData = fileData.sheets[sheetName];
           currentHeaders = currentSheetData.length > 0 ? currentSheetData[0] : [];
           processLoadedData();
@@ -708,6 +708,7 @@
 
         function analyzeColumns() {
             columnInfo = {}; // Reset column info
+            locationColumns = { postcode: -1, lat: -1, long: -1 };
 
             if (!currentHeaders || currentHeaders.length === 0) return;
 
